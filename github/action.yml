@@ -1,5 +1,5 @@
-name: "opencode GitHub Action"
-description: "Run opencode in GitHub Actions workflows"
+name: "opencode GitHub Action (afgventura fork)"
+description: "Run opencode in GitHub Actions workflows — with REVIEW_TOKEN support for posting reviews under a separate identity"
 branding:
   icon: "code"
   color: "orange"
@@ -30,6 +30,10 @@ inputs:
     description: "Comma-separated list of trigger phrases (case-insensitive). Defaults to '/opencode,/oc'"
     required: false
 
+  review_token:
+    description: "A separate GitHub PAT for posting comments, reactions, and reviews. When set, review interactions use this token instead of GITHUB_TOKEN, allowing downstream workflows to trigger from review events."
+    required: false
+
   variant:
     description: "Model variant for provider-specific reasoning effort (e.g., high, max, minimal)"
     required: false
@@ -41,28 +45,42 @@ inputs:
 runs:
   using: "composite"
   steps:
-    - name: Get opencode version
-      id: version
-      shell: bash
-      run: |
-        VERSION=$(curl -sf https://api.github.com/repos/anomalyco/opencode/releases/latest | grep -o '"tag_name": *"[^"]*"' | cut -d'"' -f4)
-        echo "version=${VERSION:-latest}" >> $GITHUB_OUTPUT
+    - name: Checkout opencode fork
+      uses: actions/checkout@v4
+      with:
+        repository: afgventura/opencode
+        ref: dev
+        path: .opencode-src
 
-    - name: Cache opencode
+    - name: Setup Bun
+      uses: oven-sh/setup-bun@v2
+
+    - name: Cache opencode build
       id: cache
       uses: actions/cache@v4
       with:
         path: ~/.opencode/bin
-        key: opencode-${{ runner.os }}-${{ runner.arch }}-${{ steps.version.outputs.version }}
+        key: opencode-fork-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.opencode-src/packages/opencode/src/**') }}
 
-    - name: Install opencode
+    - name: Build opencode from source
       if: steps.cache.outputs.cache-hit != 'true'
       shell: bash
-      run: curl -fsSL https://opencode.ai/install | bash
+      run: |
+        cd .opencode-src
+        bun install
+        cd packages/opencode
+        bun run build --single
+        mkdir -p ~/.opencode/bin
+        cp dist/opencode ~/.opencode/bin/opencode
+        chmod +x ~/.opencode/bin/opencode
 
     - name: Add opencode to PATH
       shell: bash
       run: echo "$HOME/.opencode/bin" >> $GITHUB_PATH
+
+    - name: Clean up source
+      shell: bash
+      run: rm -rf .opencode-src
 
     - name: Run opencode
       shell: bash
@@ -74,6 +92,7 @@ runs:
         SHARE: ${{ inputs.share }}
         PROMPT: ${{ inputs.prompt }}
         USE_GITHUB_TOKEN: ${{ inputs.use_github_token }}
+        REVIEW_TOKEN: ${{ inputs.review_token }}
         MENTIONS: ${{ inputs.mentions }}
         VARIANT: ${{ inputs.variant }}
         OIDC_BASE_URL: ${{ inputs.oidc_base_url }}

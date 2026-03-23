@@ -480,6 +480,7 @@ export const GithubRunCommand = cmd({
 
       let appToken: string
       let octoRest: Octokit
+      let octoReview: Octokit
       let octoGraph: typeof graphql
       let gitConfig: string
       let session: { id: SessionID; title: string; version: string }
@@ -530,6 +531,8 @@ export const GithubRunCommand = cmd({
           appToken = await exchangeForAppToken(actionToken)
         }
         octoRest = new Octokit({ auth: appToken })
+        const reviewToken = process.env["REVIEW_TOKEN"] || appToken
+        octoReview = reviewToken !== appToken ? new Octokit({ auth: reviewToken }) : octoRest
         octoGraph = graphql.defaults({
           headers: { authorization: `token ${appToken}` },
         })
@@ -1212,7 +1215,7 @@ export const GithubRunCommand = cmd({
 
         let permission
         try {
-          const response = await octoRest.repos.getCollaboratorPermissionLevel({
+          const response = await octoReview.repos.getCollaboratorPermissionLevel({
             owner,
             repo,
             username: actor!,
@@ -1233,21 +1236,21 @@ export const GithubRunCommand = cmd({
         console.log("Adding reaction...")
         if (triggerCommentId) {
           if (commentType === "pr_review") {
-            return await octoRest.rest.reactions.createForPullRequestReviewComment({
+            return await octoReview.rest.reactions.createForPullRequestReviewComment({
               owner,
               repo,
               comment_id: triggerCommentId!,
               content: AGENT_REACTION,
             })
           }
-          return await octoRest.rest.reactions.createForIssueComment({
+          return await octoReview.rest.reactions.createForIssueComment({
             owner,
             repo,
             comment_id: triggerCommentId!,
             content: AGENT_REACTION,
           })
         }
-        return await octoRest.rest.reactions.createForIssue({
+        return await octoReview.rest.reactions.createForIssue({
           owner,
           repo,
           issue_number: issueId!,
@@ -1260,7 +1263,7 @@ export const GithubRunCommand = cmd({
         console.log("Removing reaction...")
         if (triggerCommentId) {
           if (commentType === "pr_review") {
-            const reactions = await octoRest.rest.reactions.listForPullRequestReviewComment({
+            const reactions = await octoReview.rest.reactions.listForPullRequestReviewComment({
               owner,
               repo,
               comment_id: triggerCommentId!,
@@ -1270,7 +1273,7 @@ export const GithubRunCommand = cmd({
             const eyesReaction = reactions.data.find((r) => r.user?.login === AGENT_USERNAME)
             if (!eyesReaction) return
 
-            return await octoRest.rest.reactions.deleteForPullRequestComment({
+            return await octoReview.rest.reactions.deleteForPullRequestComment({
               owner,
               repo,
               comment_id: triggerCommentId!,
@@ -1278,7 +1281,7 @@ export const GithubRunCommand = cmd({
             })
           }
 
-          const reactions = await octoRest.rest.reactions.listForIssueComment({
+          const reactions = await octoReview.rest.reactions.listForIssueComment({
             owner,
             repo,
             comment_id: triggerCommentId!,
@@ -1288,7 +1291,7 @@ export const GithubRunCommand = cmd({
           const eyesReaction = reactions.data.find((r) => r.user?.login === AGENT_USERNAME)
           if (!eyesReaction) return
 
-          return await octoRest.rest.reactions.deleteForIssueComment({
+          return await octoReview.rest.reactions.deleteForIssueComment({
             owner,
             repo,
             comment_id: triggerCommentId!,
@@ -1296,7 +1299,7 @@ export const GithubRunCommand = cmd({
           })
         }
 
-        const reactions = await octoRest.rest.reactions.listForIssue({
+        const reactions = await octoReview.rest.reactions.listForIssue({
           owner,
           repo,
           issue_number: issueId!,
@@ -1306,7 +1309,7 @@ export const GithubRunCommand = cmd({
         const eyesReaction = reactions.data.find((r) => r.user?.login === AGENT_USERNAME)
         if (!eyesReaction) return
 
-        await octoRest.rest.reactions.deleteForIssue({
+        await octoReview.rest.reactions.deleteForIssue({
           owner,
           repo,
           issue_number: issueId!,
@@ -1317,7 +1320,7 @@ export const GithubRunCommand = cmd({
       async function createComment(body: string) {
         // Only called for non-schedule events, so issueId is defined
         console.log("Creating comment...")
-        return await octoRest.rest.issues.createComment({
+        return await octoReview.rest.issues.createComment({
           owner,
           repo,
           issue_number: issueId!,
