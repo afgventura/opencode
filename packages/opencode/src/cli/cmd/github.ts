@@ -536,6 +536,11 @@ export const GithubRunCommand = cmd({
         octoGraph = graphql.defaults({
           headers: { authorization: `token ${appToken}` },
         })
+        // Override GITHUB_TOKEN in the process environment so that agent tool calls
+        // (e.g. `gh api` via bash) use the review token for posting reviews
+        if (reviewToken !== appToken) {
+          process.env["GITHUB_TOKEN"] = reviewToken
+        }
 
         const { userPrompt, promptFiles } = await getUserPrompt()
         if (!useGithubToken) {
