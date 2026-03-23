@@ -71,7 +71,7 @@ runs:
         cd packages/opencode
         bun run build --single
         mkdir -p ~/.opencode/bin
-        cp dist/opencode ~/.opencode/bin/opencode
+        cp dist/opencode-linux-x64/bin/opencode ~/.opencode/bin/opencode
         chmod +x ~/.opencode/bin/opencode
 
     - name: Add opencode to PATH
