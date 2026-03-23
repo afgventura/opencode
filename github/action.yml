@@ -30,10 +30,6 @@ inputs:
     description: "Comma-separated list of trigger phrases (case-insensitive). Defaults to '/opencode,/oc'"
     required: false
 
-  review_token:
-    description: "A separate GitHub PAT for posting comments, reactions, and reviews. When set, review interactions use this token instead of GITHUB_TOKEN, allowing downstream workflows to trigger from review events."
-    required: false
-
   variant:
     description: "Model variant for provider-specific reasoning effort (e.g., high, max, minimal)"
     required: false
@@ -92,7 +88,6 @@ runs:
         SHARE: ${{ inputs.share }}
         PROMPT: ${{ inputs.prompt }}
         USE_GITHUB_TOKEN: ${{ inputs.use_github_token }}
-        REVIEW_TOKEN: ${{ inputs.review_token }}
         MENTIONS: ${{ inputs.mentions }}
         VARIANT: ${{ inputs.variant }}
         OIDC_BASE_URL: ${{ inputs.oidc_base_url }}

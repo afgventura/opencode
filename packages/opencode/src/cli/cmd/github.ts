@@ -480,7 +480,6 @@ export const GithubRunCommand = cmd({
 
       let appToken: string
       let octoRest: Octokit
-      let octoReview: Octokit
       let octoGraph: typeof graphql
       let gitConfig: string
       let session: { id: SessionID; title: string; version: string }
@@ -531,24 +530,16 @@ export const GithubRunCommand = cmd({
           appToken = await exchangeForAppToken(actionToken)
         }
         octoRest = new Octokit({ auth: appToken })
-        const reviewToken = process.env["REVIEW_TOKEN"] || appToken
-        octoReview = reviewToken !== appToken ? new Octokit({ auth: reviewToken }) : octoRest
         octoGraph = graphql.defaults({
           headers: { authorization: `token ${appToken}` },
         })
-        // Override GITHUB_TOKEN in the process environment so that agent tool calls
-        // (e.g. `gh api` via bash) use the review token for posting reviews
-        if (reviewToken !== appToken) {
-          process.env["GITHUB_TOKEN"] = reviewToken
-        }
 
         const { userPrompt, promptFiles } = await getUserPrompt()
         if (!useGithubToken) {
           await configureGit(appToken)
         }
-        // Skip permission check and reactions for repo events (no actor to check, no issue to react to)
+        // Skip reactions for repo events (no actor to check, no issue to react to)
         if (isUserEvent) {
-          await assertPermissions()
           await addReaction(commentType)
         }
 
@@ -1214,48 +1205,27 @@ export const GithubRunCommand = cmd({
         return parseInt(result.stdout.toString().trim()) > 0
       }
 
-      async function assertPermissions() {
-        // Only called for non-schedule events, so actor is defined
-        console.log(`Asserting permissions for user ${actor}...`)
-
-        let permission
-        try {
-          const response = await octoReview.repos.getCollaboratorPermissionLevel({
-            owner,
-            repo,
-            username: actor!,
-          })
-
-          permission = response.data.permission
-          console.log(`  permission: ${permission}`)
-        } catch (error) {
-          console.error(`Failed to check permissions: ${error}`)
-          throw new Error(`Failed to check permissions for user ${actor}: ${error}`)
-        }
-
-        if (!["admin", "write"].includes(permission)) throw new Error(`User ${actor} does not have write permissions`)
-      }
 
       async function addReaction(commentType?: "issue" | "pr_review") {
         // Only called for non-schedule events, so triggerCommentId is defined
         console.log("Adding reaction...")
         if (triggerCommentId) {
           if (commentType === "pr_review") {
-            return await octoReview.rest.reactions.createForPullRequestReviewComment({
+            return await octoRest.rest.reactions.createForPullRequestReviewComment({
               owner,
               repo,
               comment_id: triggerCommentId!,
               content: AGENT_REACTION,
             })
           }
-          return await octoReview.rest.reactions.createForIssueComment({
+          return await octoRest.rest.reactions.createForIssueComment({
             owner,
             repo,
             comment_id: triggerCommentId!,
             content: AGENT_REACTION,
           })
         }
-        return await octoReview.rest.reactions.createForIssue({
+        return await octoRest.rest.reactions.createForIssue({
           owner,
           repo,
           issue_number: issueId!,
@@ -1268,7 +1238,7 @@ export const GithubRunCommand = cmd({
         console.log("Removing reaction...")
         if (triggerCommentId) {
           if (commentType === "pr_review") {
-            const reactions = await octoReview.rest.reactions.listForPullRequestReviewComment({
+            const reactions = await octoRest.rest.reactions.listForPullRequestReviewComment({
               owner,
               repo,
               comment_id: triggerCommentId!,
@@ -1278,7 +1248,7 @@ export const GithubRunCommand = cmd({
             const eyesReaction = reactions.data.find((r) => r.user?.login === AGENT_USERNAME)
             if (!eyesReaction) return
 
-            return await octoReview.rest.reactions.deleteForPullRequestComment({
+            return await octoRest.rest.reactions.deleteForPullRequestComment({
               owner,
               repo,
               comment_id: triggerCommentId!,
@@ -1286,7 +1256,7 @@ export const GithubRunCommand = cmd({
             })
           }
 
-          const reactions = await octoReview.rest.reactions.listForIssueComment({
+          const reactions = await octoRest.rest.reactions.listForIssueComment({
             owner,
             repo,
             comment_id: triggerCommentId!,
@@ -1296,7 +1266,7 @@ export const GithubRunCommand = cmd({
           const eyesReaction = reactions.data.find((r) => r.user?.login === AGENT_USERNAME)
           if (!eyesReaction) return
 
-          return await octoReview.rest.reactions.deleteForIssueComment({
+          return await octoRest.rest.reactions.deleteForIssueComment({
             owner,
             repo,
             comment_id: triggerCommentId!,
@@ -1304,7 +1274,7 @@ export const GithubRunCommand = cmd({
           })
         }
 
-        const reactions = await octoReview.rest.reactions.listForIssue({
+        const reactions = await octoRest.rest.reactions.listForIssue({
           owner,
           repo,
           issue_number: issueId!,
@@ -1314,7 +1284,7 @@ export const GithubRunCommand = cmd({
         const eyesReaction = reactions.data.find((r) => r.user?.login === AGENT_USERNAME)
         if (!eyesReaction) return
 
-        await octoReview.rest.reactions.deleteForIssue({
+        await octoRest.rest.reactions.deleteForIssue({
           owner,
           repo,
           issue_number: issueId!,
@@ -1325,7 +1295,7 @@ export const GithubRunCommand = cmd({
       async function createComment(body: string) {
         // Only called for non-schedule events, so issueId is defined
         console.log("Creating comment...")
-        return await octoReview.rest.issues.createComment({
+        return await octoRest.rest.issues.createComment({
           owner,
           repo,
           issue_number: issueId!,
